@@ -1,0 +1,80 @@
+services:
+
+  mysql:
+    image: mysql:8
+    container_name: mysql-despacho
+
+    restart: always
+
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: despacho_db
+
+    ports:
+      - "3306:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    networks:
+      - proyecto-network
+
+  backend-despacho:
+    image: despacho-backend
+    container_name: backend-despacho
+
+    depends_on:
+      - mysql
+
+    environment:
+      DB_ENDPOINT: mysql
+      DB_PORT: 3306
+      DB_NAME: despacho_db
+      DB_USERNAME: root
+      DB_PASSWORD: 1234
+
+    ports:
+      - "8081:8081"
+
+    networks:
+      - proyecto-network
+
+  backend-ventas:
+    image: ventas-backend
+    container_name: backend-ventas
+
+    depends_on:
+      - mysql
+
+    environment:
+      DB_ENDPOINT: mysql
+      DB_PORT: 3306
+      DB_NAME: ventas_db
+      DB_USERNAME: root
+      DB_PASSWORD: 1234
+
+    ports:
+      - "8080:8080"
+
+    networks:
+      - proyecto-network
+
+  frontend:
+    image: despacho-frontend
+    container_name: frontend-despacho
+
+    depends_on:
+      - backend-despacho
+      - backend-ventas
+
+    ports:
+      - "80:80"
+
+    networks:
+      - proyecto-network
+
+volumes:
+  mysql_data:
+
+networks:
+  proyecto-network:
