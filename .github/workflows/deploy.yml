@@ -23,15 +23,10 @@ jobs:
 
       - name: Login a Amazon ECR
         run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-          docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
       - name: Build imagen ventas backend
-        run: |
-          docker build \
-            -t ${{ secrets.ECR_REPO_URL_VENTAS }}:latest \
-            -t ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }} \
-            ./back-Ventas_SpringBoot/Springboot-API-REST
+        run: docker build -t ${{ secrets.ECR_REPO_URL_VENTAS }}:latest -t ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }} ./back-Ventas_SpringBoot/Springboot-API-REST
 
       - name: Push imagen ventas backend
         run: |
@@ -39,11 +34,7 @@ jobs:
           docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }}
 
       - name: Build imagen despacho backend
-        run: |
-          docker build \
-            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest \
-            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} \
-            ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+        run: docker build -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
 
       - name: Push imagen despacho backend
         run: |
