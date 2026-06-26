@@ -34,8 +34,12 @@ jobs:
           docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }}
 
       - name: Build imagen despacho backend
-        run: docker build -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} -f ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-
+        run: |
+          docker build \
+            -f ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile \
+            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest \
+            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} \
+            ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
 
       - name: Push imagen despacho backend
         run: |
