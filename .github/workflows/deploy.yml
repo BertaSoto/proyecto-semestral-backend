@@ -1,4 +1,4 @@
-name: Build Push Deploy Backend
+name: Build Push Deploy Backend ECR
 
 on:
   push:
@@ -13,24 +13,6 @@ jobs:
       - name: Checkout codigo
         uses: actions/checkout@v4
 
-      - name: Login Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build imagen despacho backend
-        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/despacho-backend:latest ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-
-      - name: Push imagen despacho backend
-        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/despacho-backend:latest
-
-      - name: Build imagen ventas backend
-        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/ventas-backend:latest ./back-Ventas_SpringBoot/Springboot-API-REST
-
-      - name: Push imagen ventas backend
-        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/ventas-backend:latest
-
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -39,18 +21,53 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy backend en EC2 App
+      - name: Login a Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+          docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+
+      - name: Build imagen ventas backend
+        run: |
+          docker build \
+            -t ${{ secrets.ECR_REPO_URL_VENTAS }}:latest \
+            -t ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }} \
+            ./back-Ventas_SpringBoot/Springboot-API-REST
+
+      - name: Push imagen ventas backend
+        run: |
+          docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }}
+
+      - name: Build imagen despacho backend
+        run: |
+          docker build \
+            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest \
+            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} \
+            ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+
+      - name: Push imagen despacho backend
+        run: |
+          docker push ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }}
+
+      - name: Deploy backend en EC2 App con SSM
         run: |
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_APP_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy backend desde GitHub Actions" \
+            --comment "Deploy backend desde GitHub Actions hacia EC2 App" \
             --parameters 'commands=[
-              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/despacho-backend:latest",
-              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ventas-backend:latest",
-              "docker stop despacho-api ventas-api || true",
-              "docker rm despacho-api ventas-api || true",
-              "docker run -d --name despacho-api -p 8081:8081 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.DOCKERHUB_USERNAME }}/despacho-backend:latest",
-              "docker run -d --name ventas-api -p 8080:8080 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.DOCKERHUB_USERNAME }}/ventas-backend:latest",
-              "docker ps"
+              "export AWS_REGION=${{ secrets.AWS_REGION }}",
+              "export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}",
+              "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
+              "docker pull ${{ secrets.ECR_REPO_URL_VENTAS }}:latest",
+              "docker pull ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest",
+              "docker stop backend-ventas backend-despacho || true",
+              "docker rm backend-ventas backend-despacho || true",
+              "docker run -d --name backend-ventas --restart always -p 8080:8080 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME_VENTAS }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.ECR_REPO_URL_VENTAS }}:latest",
+              "docker run -d --name backend-despacho --restart always -p 8081:8081 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME_DESPACHO }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest",
+              "sleep 20",
+              "docker ps",
+              "curl -i http://localhost:8080/api/v1/ventas || true",
+              "curl -i http://localhost:8081/api/v1/despachos || true"
             ]'
