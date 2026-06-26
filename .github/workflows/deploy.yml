@@ -26,44 +26,43 @@ jobs:
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
 
       - name: Build imagen ventas backend
-        run: docker build -t ${{ secrets.ECR_REPO_URL_VENTAS }}:latest -t ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }} ./back-Ventas_SpringBoot/Springboot-API-REST
+        run: |
+          IMAGE="${{ secrets.ECR_REPO_URL_VENTAS }}"
+          CONTEXT="back-Ventas_SpringBoot/Springboot-API-REST"
+          test -f "$CONTEXT/Dockerfile"
+          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" "$CONTEXT"
 
       - name: Push imagen ventas backend
         run: |
-          docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_VENTAS }}:${{ github.sha }}
+          IMAGE="${{ secrets.ECR_REPO_URL_VENTAS }}"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
 
       - name: Build imagen despacho backend
         run: |
-          docker build \
-            -f ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO/Dockerfile \
-            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest \
-            -t ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }} \
-            ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+          IMAGE="${{ secrets.ECR_REPO_URL_DESPACHO }}"
+          CONTEXT="back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO"
+          test -f "$CONTEXT/Dockerfile"
+          docker build -f "$CONTEXT/Dockerfile" -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" "$CONTEXT"
 
       - name: Push imagen despacho backend
         run: |
-          docker push ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_DESPACHO }}:${{ github.sha }}
+          IMAGE="${{ secrets.ECR_REPO_URL_DESPACHO }}"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
 
       - name: Deploy backend en EC2 App con SSM
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_APP_ID }}
+          VENTAS_IMAGE: ${{ secrets.ECR_REPO_URL_VENTAS }}
+          DESPACHO_IMAGE: ${{ secrets.ECR_REPO_URL_DESPACHO }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME_VENTAS: ${{ secrets.DB_NAME_VENTAS }}
+          DB_NAME_DESPACHO: ${{ secrets.DB_NAME_DESPACHO }}
         run: |
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_APP_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy backend desde GitHub Actions hacia EC2 App" \
-            --parameters 'commands=[
-              "export AWS_REGION=${{ secrets.AWS_REGION }}",
-              "export ECR_REGISTRY=${{ secrets.ECR_REGISTRY }}",
-              "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
-              "docker pull ${{ secrets.ECR_REPO_URL_VENTAS }}:latest",
-              "docker pull ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest",
-              "docker stop backend-ventas backend-despacho || true",
-              "docker rm backend-ventas backend-despacho || true",
-              "docker run -d --name backend-ventas --restart always -p 8080:8080 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME_VENTAS }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.ECR_REPO_URL_VENTAS }}:latest",
-              "docker run -d --name backend-despacho --restart always -p 8081:8081 -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} -e DB_PORT=${{ secrets.DB_PORT }} -e DB_NAME=${{ secrets.DB_NAME_DESPACHO }} -e DB_USERNAME=${{ secrets.DB_USERNAME }} -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ secrets.ECR_REPO_URL_DESPACHO }}:latest",
-              "sleep 20",
-              "docker ps",
-              "curl -i http://localhost:8080/api/v1/ventas || true",
-              "curl -i http://localhost:8081/api/v1/despachos || true"
-            ]'
+          aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name "AWS-RunShellScript" --comment "Deploy backend desde GitHub Actions hacia EC2 App" --parameters "commands=[\"export AWS_REGION=$AWS_REGION\",\"export ECR_REGISTRY=$ECR_REGISTRY\",\"aws ecr get-login-password --region \$AWS_REGION | docker login --username AWS --password-stdin \$ECR_REGISTRY\",\"docker pull $VENTAS_IMAGE:latest\",\"docker pull $DESPACHO_IMAGE:latest\",\"docker stop backend-ventas backend-despacho || true\",\"docker rm backend-ventas backend-despacho || true\",\"docker run -d --name backend-ventas --restart always -p 8080:8080 -e DB_ENDPOINT=$DB_ENDPOINT -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME_VENTAS -e DB_USERNAME=$DB_USERNAME -e DB_PASSWORD=$DB_PASSWORD $VENTAS_IMAGE:latest\",\"docker run -d --name backend-despacho --restart always -p 8081:8081 -e DB_ENDPOINT=$DB_ENDPOINT -e DB_PORT=$DB_PORT -e DB_NAME=$DB_NAME_DESPACHO -e DB_USERNAME=$DB_USERNAME -e DB_PASSWORD=$DB_PASSWORD $DESPACHO_IMAGE:latest\",\"sleep 20\",\"docker ps\",\"curl -i http://localhost:8080/api/v1/ventas || true\",\"curl -i http://localhost:8081/api/v1/despachos || true\"]"
